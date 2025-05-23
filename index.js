@@ -1,5 +1,6 @@
 import express from 'express';
-import fetch from 'node-fetch';
+import axios from 'axios';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -11,39 +12,38 @@ app.get('/proxy', async (req, res) => {
   const page = req.query.page || '1';
   const max = req.query.max || '20';
 
-  // 1. Token al
-  const tokenResponse = await fetch("https://api.linksynergy.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-    }),
-  });
+  try {
+    const tokenResp = await axios.post(
+      'https://api.linksynergy.com/token',
+      new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET
+      }),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      }
+    );
 
-  const tokenData = await tokenResponse.json();
-  if (!tokenData.access_token) {
-    return res.status(500).json({ error: "Token alınamadı", response: tokenData });
+    const token = tokenResp.data.access_token;
+
+    const productResp = await axios.get(
+      `https://api.linksynergy.com/productsearch/1.0?mid=${mid}&pagenumber=${page}&max=${max}&language=en_US`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/xml'
+        }
+      }
+    );
+
+    res.setHeader('Content-Type', 'application/xml');
+    res.send(productResp.data);
+  } catch (err) {
+    res.status(500).json({ error: 'Hata oluştu', details: err.toString() });
   }
-
-  const token = tokenData.access_token;
-
-  // 2. Ürünleri çek
-  const apiUrl = `https://api.linksynergy.com/productsearch/1.0?mid=${mid}&pagenumber=${page}&max=${max}&language=en_US`;
-
-  const productResponse = await fetch(apiUrl, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/xml"
-    }
-  });
-
-  const productXml = await productResponse.text();
-  res.setHeader("Content-Type", "application/xml");
-  res.send(productXml);
 });
 
 app.listen(PORT, () => {
-  console.log(`Proxy çalışıyor http://localhost:${PORT}`);
+  console.log(`Proxy aktif: http://localhost:${PORT}`);
 });
